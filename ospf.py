@@ -220,6 +220,8 @@ class NetworkModel(object):
         nodes = set()
         links = []
 
+        p2pnwset = netaddr.IPSet()
+
         p2pnw = {}
         p2plink = {}
 
@@ -240,6 +242,7 @@ class NetworkModel(object):
                     rnodes.add('    N%s [label="%s"];' % (safeIPAddr(iface.data), iface.data ))
                 elif iface.type == 1:    # p2p n/w
                     rnodes.add('    N%s [label="%s"];' % (safeIPAddr(iface.data), iface.data ))
+                    p2pnwset.add(iface.data)
                     p2pnw[str(iface.data)] = str(r)
                     p2plink['%s_%s' % (iface.id, r)] = str(iface.data)
             out += list(rnodes)
@@ -248,20 +251,34 @@ class NetworkModel(object):
         for nw in self.networks:
             out.append('  nw_%s [shape="plaintext",label="%s/%s"];' % (safeIPAddr(nw), nw, self.networks[nw].netmask.bin.count('1') ))
 
+        print("#", p2pnw)
+
         for r, router in self.routers.items():
             for iface in router.links:
                 if iface.type == 2:    # transit n/w
                     links.append('  N%s -- nw_%s [label="%s"];' % (safeIPAddr(iface.data), safeIPAddr(destNW(iface.data, self.networks)), iface.metric))
                 elif iface.type == 3:    # stub n/w
-                    if (str(iface.id) not in p2pnw) or (str(p2pnw[str(iface.id)]) == str(r)) or ('%s_%s' % (p2pnw[str(iface.id)], r) not in p2plink):
-                        nodes.add('  stub_%s [shape="doubleoctagon",label="%s/%s"];' % (safeIPAddr(iface.id), iface.id, iface.data.bin.count('1')))
-                        links.append('  cluster_%s -- stub_%s [label="%s"];' % (safeIPAddr(r), safeIPAddr(iface.id), iface.metric))
-                    else:
-                        remoteid = p2pnw[str(iface.id)]
-                        p2psorted = sorted([remoteid, str(r)])
+                    network = netaddr.IPNetwork("%s/%s" % (iface.id, iface.data))
+                    # iface.id is the network address, iface.data is the subnet mask
+                    ptp_ips = p2pnwset & netaddr.IPSet(network)
+                    if ptp_ips:
+                        ids = [p2pnw[str(ip)] for ip in ptp_ips]
+                        remoteid = [i for i in ids if i != str(r)][0]
+                        p2psorted = sorted(ids)
                         p2plocalip = p2plink['%s_%s' % (remoteid, r)]
                         nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
                         links.append('  N%s -- ptp_%s_%s [label="%s"];' % (safeIPAddr(p2plocalip), safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1]), iface.metric))
+
+                    #if (str(iface.id) not in p2pnw) or (str(p2pnw[str(iface.id)]) == str(r)) or ('%s_%s' % (p2pnw[str(iface.id)], r) not in p2plink):
+                    else:
+                        nodes.add('  stub_%s [shape="doubleoctagon",label="%s/%s"];' % (safeIPAddr(iface.id), iface.id, iface.data.bin.count('1')))
+                        links.append('  cluster_%s -- stub_%s [label="%s"];' % (safeIPAddr(r), safeIPAddr(iface.id), iface.metric))
+                    #else:
+                    #    remoteid = p2pnw[str(iface.id)]
+                    #    p2psorted = sorted([remoteid, str(r)])
+                    #    p2plocalip = p2plink['%s_%s' % (remoteid, r)]
+                    #    nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
+                    #    links.append('  N%s -- ptp_%s_%s [label="%s"];' % (safeIPAddr(p2plocalip), safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1]), iface.metric))
 
             if r in self.extnetworks:
                 for extnet in self.extnetworks[r]:
