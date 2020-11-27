@@ -173,14 +173,14 @@ class NetworkModel(object):
                 self.changed = True
                 #        print("Network Update: ", lsa)
             else:
-                print("# N/W lsa is old", lsa)
+                print("// N/W lsa is old", lsa)
         elif lsa.type == 1:
             if lsa.lsid not in self.routers or lsa.seq > self.routers[lsa.lsid].seq:
                 self.routers[lsa.lsid] = lsa
                 self.changed = True
                 #        print("Router Update: ", lsa)
             else:
-                print("# Router lsa is old", lsa)
+                print("// Router lsa is old", lsa)
         elif lsa.type == 5:
             network = lsa.lsid & lsa.netmask
             if lsa.advrouter not in self.extnetworks:
@@ -190,9 +190,9 @@ class NetworkModel(object):
                 self.changed = True
                 #        print("Extern update: ", lsa)
             else:
-                print("# Extern LSA is old")
+                print("// Extern LSA is old")
         else:
-            print("# Unknown LSA!", lsa.type)
+            print("// Unknown LSA!", lsa.type)
 
     def __str__(self):
         out = io.StringIO()
@@ -214,6 +214,7 @@ class NetworkModel(object):
         out = []
         out.append('graph ospf_nw {')
         out.append('  layout=fdp;')
+        out.append('  splines=true;')
         out.append('  label="Generated: %s";' % str(datetime.datetime.utcnow()))
         out.append('  node [shape="box",style="rounded"];')
 
@@ -233,7 +234,7 @@ class NetworkModel(object):
                 try:
                     label = '%s\\n(%s)' % (socket.gethostbyaddr(str(r))[0].split('.')[0], r)
                 except:
-                    print('# Could not get hostname for router %s' % r)
+                    print('// Could not get hostname for router %s' % r)
 
             out.append('    label = "%s";' % label)
             rnodes = set()
@@ -243,8 +244,8 @@ class NetworkModel(object):
                 elif iface.type == 1:    # p2p n/w
                     rnodes.add('    N%s [label="%s"];' % (safeIPAddr(iface.data), iface.data ))
                     p2pnwset.add(iface.data)
-                    p2pnw[str(iface.data)] = str(r)
-                    p2plink['%s_%s' % (iface.id, r)] = str(iface.data)
+                    p2pnw[iface.data] = router
+                    p2plink['%s_%s' % (iface.data, r)] = iface
             out += list(rnodes)
             out.append('  }')
 
@@ -262,12 +263,16 @@ class NetworkModel(object):
                     # iface.id is the network address, iface.data is the subnet mask
                     ptp_ips = p2pnwset & netaddr.IPSet(network)
                     if ptp_ips:
-                        ids = [p2pnw[str(ip)] for ip in ptp_ips]
-                        remoteid = [i for i in ids if i != str(r)][0]
+                        localiface = [iface for iface in router.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)][0]
+                        routers = [p2pnw[ip] for ip in ptp_ips]
+                        remote = [r for r in routers if r != router][0]
+                        remoteiface = [iface for iface in remote.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)][0]
+                        ids = [router.lsid, remote.lsid]
                         p2psorted = sorted(ids)
-                        p2plocalip = p2plink['%s_%s' % (remoteid, r)]
-                        nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
-                        links.append('  N%s -- ptp_%s_%s [label="%s"];' % (safeIPAddr(p2plocalip), safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1]), iface.metric))
+                        #nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
+                        if p2psorted[0] == r:
+                            links.append('  N%s -- N%s [taillabel="%s",headlabel="%s"];' % (safeIPAddr(str(localiface.data)), safeIPAddr(str(remoteiface.data)), iface.metric, remoteiface.metric))
+                        #links.append('  N%s -- ptp_%s_%s [label="%s"];' % (safeIPAddr(str(localiface.data)), safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1]), iface.metric))
 
                     #if (str(iface.id) not in p2pnw) or (str(p2pnw[str(iface.id)]) == str(r)) or ('%s_%s' % (p2pnw[str(iface.id)], r) not in p2plink):
                     else:

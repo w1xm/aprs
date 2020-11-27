@@ -27,5 +27,5 @@ if 'GATEWAY_INTERFACE' in os.environ:
     print('Content-type: text/plain')
     print()
 for l in str(nw).splitlines():
-    print("#", l)
+    print("//", l)
 print(nw.generateGraph())
