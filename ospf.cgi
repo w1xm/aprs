@@ -12,6 +12,11 @@ password = form.getfirst('password')
 if form.getfirst('resolve'):
     ospf.resolve_router_hostnames = True
 
+return_png = False
+if form.getfirst('png'):
+    # If set, render to PNG. Otherwise, return raw DOT file
+    return_png = True
+
 connection = routeros_api.RouterOsApiPool('w1xm-21.mit.edu', username='admin', password=password, plaintext_login=True)
 api = connection.get_api()
 lsas = api.get_resource('/routing/ospf/lsa').get()
@@ -24,8 +29,18 @@ for l in lsas:
         print(l)
         raise
 if 'GATEWAY_INTERFACE' in os.environ:
-    print('Content-type: text/plain')
+    print('Content-type: ' + 'image/png' if return_png else 'text/plain')
     print()
-for l in str(nw).splitlines():
-    print("//", l)
-print(nw.generateGraph())
+if not return_png:
+    for l in str(nw).splitlines():
+        print("//", l)
+
+dot_data = nw.generateGraph()
+if return_png:
+    # Render
+    import graphviz
+    src = graphviz.Source(dot_data)
+    print(src.pipe(format="png"))
+else:
+    # Raw DOT file
+    print(dot_data)
