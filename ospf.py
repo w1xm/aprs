@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import io
+import logging
 import socket
 import sys
 import datetime
 import netaddr
 import struct 
 import binascii
+
+logger = logging.getLogger('ospf')
 
 resolve_router_hostnames = False
 
@@ -173,14 +176,14 @@ class NetworkModel(object):
                 self.changed = True
                 #        print("Network Update: ", lsa)
             else:
-                print("// N/W lsa is old", lsa)
+                logger.warn("N/W lsa is old", lsa)
         elif lsa.type == 1:
             if lsa.lsid not in self.routers or lsa.seq > self.routers[lsa.lsid].seq:
                 self.routers[lsa.lsid] = lsa
                 self.changed = True
                 #        print("Router Update: ", lsa)
             else:
-                print("// Router lsa is old", lsa)
+                logger.warn("Router lsa is old", lsa)
         elif lsa.type == 5:
             network = lsa.lsid & lsa.netmask
             if lsa.advrouter not in self.extnetworks:
@@ -190,9 +193,9 @@ class NetworkModel(object):
                 self.changed = True
                 #        print("Extern update: ", lsa)
             else:
-                print("// Extern LSA is old")
+                logger.warn("Extern LSA is old")
         else:
-            print("// Unknown LSA!", lsa.type)
+            logger.warn("Unknown LSA!", lsa.type)
 
     def __str__(self):
         out = io.StringIO()
@@ -234,7 +237,7 @@ class NetworkModel(object):
                 try:
                     label = '%s\\n(%s)' % (socket.gethostbyaddr(str(r))[0].split('.')[0], r)
                 except:
-                    print('// Could not get hostname for router %s' % r)
+                    logger.warn('Could not get hostname for router %s' % r)
 
             out.append('    label = "%s";' % label)
             rnodes = set()
@@ -251,8 +254,6 @@ class NetworkModel(object):
 
         for nw in self.networks:
             out.append('  nw_%s [shape="plaintext",label="%s/%s"];' % (safeIPAddr(nw), nw, self.networks[nw].netmask.bin.count('1') ))
-
-        print("#", p2pnw)
 
         for r, router in self.routers.items():
             for iface in router.links:

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
 import cgi
+import cgitb
+import io
 import os
+import sys
 import routeros_api
 
 import ospf
@@ -12,10 +15,7 @@ password = form.getfirst('password')
 if form.getfirst('resolve'):
     ospf.resolve_router_hostnames = True
 
-return_png = False
-if form.getfirst('png'):
-    # If set, render to PNG. Otherwise, return raw DOT file
-    return_png = True
+format = form.getfirst('format', 'txt')
 
 connection = routeros_api.RouterOsApiPool('w1xm-21.mit.edu', username='admin', password=password, plaintext_login=True)
 api = connection.get_api()
@@ -29,18 +29,23 @@ for l in lsas:
         print(l)
         raise
 if 'GATEWAY_INTERFACE' in os.environ:
-    print('Content-type: ' + 'image/png' if return_png else 'text/plain')
+    print('Content-type: ' + {
+        'png': 'image/png',
+        'svg': 'image/svg+xml',
+        'txt': 'text/plain'}[format])
     print()
-if not return_png:
-    for l in str(nw).splitlines():
-        print("//", l)
 
-dot_data = nw.generateGraph()
-if return_png:
+dot = io.StringIO()
+for l in str(nw).splitlines():
+    print("//", l, file=dot)
+
+print(nw.generateGraph(), file=dot)
+if format == 'txt':
+    # Raw DOT file
+    print(dot.getvalue())
+else:
     # Render
     import graphviz
-    src = graphviz.Source(dot_data)
-    print(src.pipe(format="png"))
-else:
-    # Raw DOT file
-    print(dot_data)
+    src = graphviz.Source(dot.getvalue())
+    sys.stdout.flush()
+    sys.stdout.buffer.write(src.pipe(format=format))
