@@ -99,12 +99,12 @@ class OSPF_LSA_Router(OSPF_LSA_Header):
 class Mikrotik_LSA_Network(Mikrotik_LSA_Header):
     def __init__(self, lsa):
         super().__init__(lsa)
-        args = {}
-        for line in parse_body(lsa['body']):
-            args.update(line)
-        self.netmask = netaddr.IPAddress(args['netmask'])
         self.attached = []
-        raise NotImplementedError("todo: parse attached")
+        for line in parse_body(lsa['body']):
+            if 'netmask' in line:
+                self.netmask = netaddr.IPAddress(line['netmask'])
+            elif 'routerId' in line:
+                self.attached.append(netaddr.IPAddress(line['routerId']))
 
     def __str__(self):
         return ', '.join([str(self.lsid), str(self.advrouter), str(self.netmask), '{'+', '.join([str(a) for a in self.attached])+'}'])
