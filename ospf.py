@@ -5,7 +5,7 @@ import socket
 import sys
 import datetime
 import netaddr
-import struct 
+import struct
 import binascii
 
 logger = logging.getLogger('ospf')
@@ -25,8 +25,14 @@ def destNW(ip, networks):
   return None
 
 def parse_body(body):
-    for line in body.splitlines():
-        yield {i[0]: i[1] if len(i) > 1 else None for i in (x.split('=', 1) for x in line.strip().split())}
+  lines = iter(body.splitlines())
+  for line in lines:
+    if line.startswith('links ('):
+      keys = line[7:-1].replace('type', 'link-type').split(', ')
+      break
+    yield {i[0]: i[1] if len(i) > 1 else None for i in (x.split('=', 1) for x in line.strip().split())}
+  for line in lines:
+    yield dict(zip(keys, line.split()))
 
 def parse_mikrotik_lsa(lsa):
     return {
@@ -142,7 +148,7 @@ class OSPF_LSA_External(OSPF_LSA_Header):
     OSPF_LSA_Header.__init__(self, data)
     self.netmask = netaddr.IPAddress(socket.inet_ntoa(data[20:24]))
     self.metric = mkNetInt(data[24:28]) & 0x00ffffff
-    
+
 
 class OSPF_LS_Update(object):
   lsTypes = { 1: ('Router-LSAs', OSPF_LSA_Router), 2: ('Network-LSAs', OSPF_LSA_Network), 5: ('AS-external-LSAs', OSPF_LSA_External) }
@@ -264,14 +270,18 @@ class NetworkModel(object):
                     # iface.id is the network address, iface.data is the subnet mask
                     ptp_ips = p2pnwset & netaddr.IPSet(network)
                     if ptp_ips:
-                        localiface = [iface for iface in router.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)][0]
+                        localiface = [iface for iface in router.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)]
+                        if not localiface:
+                          continue
+                        localiface = localiface[0]
                         routers = [p2pnw[ip] for ip in ptp_ips]
-                        remote = [r for r in routers if r != router][0]
-                        remoteiface = [iface for iface in remote.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)][0]
-                        ids = [router.lsid, remote.lsid]
-                        p2psorted = sorted(ids)
-                        #nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
-                        if p2psorted[0] == r:
+                        remotes = [r for r in routers if r != router]
+                        for remote in remotes:
+                          remoteiface = [iface for iface in remote.links if netaddr.IPSet([iface.data]) & netaddr.IPSet(network)][0]
+                          ids = [router.lsid, remote.lsid]
+                          p2psorted = sorted(ids)
+                          #nodes.add('  ptp_%s_%s [shape="plaintext",label="Tunnel"];' % (safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1])))
+                          if p2psorted[0] == r:
                             links.append('  N%s -- N%s [taillabel="%s",headlabel="%s"];' % (safeIPAddr(str(localiface.data)), safeIPAddr(str(remoteiface.data)), iface.metric, remoteiface.metric))
                         #links.append('  N%s -- ptp_%s_%s [label="%s"];' % (safeIPAddr(str(localiface.data)), safeIPAddr(p2psorted[0]), safeIPAddr(p2psorted[1]), iface.metric))
 
@@ -324,7 +334,7 @@ if __name__ == '__main__':
 
     print("Output file:", graphFile)
 
-  
+
     sock = pcap.pcap(name=None, promisc=True, immediate=True)
     sock.setfilter("proto 89")
     print("Listener started")
@@ -334,13 +344,13 @@ if __name__ == '__main__':
             ip=eth.data
             if not isinstance(ip.data, dpkt.ospf.OSPF):
                 print("Invalid OSPF Packet")
-                continue 
+                continue
             ospf = ip.data
             # Only process actual update packets
-            if OSPF_TYPE[ospf.type] == "LSU":    
+            if OSPF_TYPE[ospf.type] == "LSU":
                 print(timestamp, "src: ", socket.inet_ntoa(ip.src), "\tRouter: ", str(netaddr.IPAddress(ospf.router)), "\tArea: ", ospf.area, "\tType: ", OSPF_TYPE[ospf.type])
                 processPacket(data[34:])
-#      else 
+#      else
 #        print(timestamp, "src: ", socket.inet_ntoa(ip.src), "\tRouter: ", str(netaddr.IPAddress(ospf.router)), "\tArea: ", ospf.area, "\tType: ", OSPF_TYPE[ospf.type])
     except KeyboardInterrupt:
-        sys.exit()  
+        sys.exit()

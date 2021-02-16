@@ -17,13 +17,21 @@ if form.getfirst('resolve'):
 
 format = form.getfirst('format', 'txt')
 
-connection = routeros_api.RouterOsApiPool('w1xm-21.mit.edu', username='admin', password=password, plaintext_login=True)
-api = connection.get_api()
+for plaintext in (True, False):
+    connection = routeros_api.RouterOsApiPool(form.getfirst('host') or 'w1xm-mgmt.mit.edu', username='admin', password=password, plaintext_login=plaintext)
+    try:
+        api = connection.get_api()
+        break
+    except AttributeError:
+        pass
+else:
+    raise "Failed to log in"
 lsas = api.get_resource('/routing/ospf/lsa').get()
 
 nw = ospf.NetworkModel()
 for l in lsas:
     try:
+        #print(l)
         nw.injectLSA(ospf.parse_mikrotik_lsa(l))
     except:
         print(l)
