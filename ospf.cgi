@@ -12,13 +12,13 @@ import ospf
 form = cgi.FieldStorage()
 
 password = form.getfirst('password')
-if form.getfirst('resolve'):
-    ospf.resolve_router_hostnames = True
 
 format = form.getfirst('format', 'txt')
 
+host = form.getfirst('host') or 'w1xm-mgmt.mit.edu'
+
 for plaintext in (True, False):
-    connection = routeros_api.RouterOsApiPool(form.getfirst('host') or 'w1xm-mgmt.mit.edu', username='admin', password=password, plaintext_login=plaintext)
+    connection = routeros_api.RouterOsApiPool(host, username='admin', password=password, plaintext_login=plaintext)
     try:
         api = connection.get_api()
         break
@@ -29,6 +29,7 @@ else:
 lsas = api.get_resource('/routing/ospf/lsa').get()
 
 nw = ospf.NetworkModel()
+nw.nameservers = [host]
 for l in lsas:
     try:
         #print(l)

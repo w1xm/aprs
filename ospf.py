@@ -7,10 +7,9 @@ import datetime
 import netaddr
 import struct
 import binascii
+import dns.resolver
 
 logger = logging.getLogger('ospf')
-
-resolve_router_hostnames = False
 
 OSPF_TYPE = ["Invalid","Hello","DBD","LSR","LSU","LSA"]
 
@@ -173,6 +172,7 @@ class NetworkModel(object):
         self.networks={}
         self.routers={}
         self.changed = False
+        self.nameservers = []
 
     def injectLSA(self, lsa):
         if lsa.type == 2:
@@ -220,6 +220,10 @@ class NetworkModel(object):
 
 
     def generateGraph(self):
+        resolver = None
+        if self.nameservers:
+            resolver = dns.resolver.Resolver(configure=False)
+            resolver.nameservers = self.nameservers
         out = []
         out.append('graph ospf_nw {')
         out.append('  layout=fdp;')
@@ -239,11 +243,14 @@ class NetworkModel(object):
             out.append('  subgraph cluster_%s {' % safeIPAddr(r))
 
             label = r
-            if resolve_router_hostnames:
+            if resolver:
                 try:
-                    label = '%s\\n(%s)' % (socket.gethostbyaddr(str(r))[0].split('.')[0], r)
+                    answer = resolver.resolve_address(str(r))
                 except:
-                    logger.warn('Could not get hostname for router %s' % r)
+                    logger.warn('Could not get hostname for router %s' % r, exc_info=True)
+                else:
+                    for rec in answer:
+                        label = '%s\\n(%s)' % (rec.target[0].decode(), r)
 
             out.append('    label = "%s";' % label)
             rnodes = set()
